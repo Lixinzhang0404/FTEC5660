@@ -50,20 +50,36 @@ homework runner.
 
 ## Homework 1 solution: 
 > to students: please fill your solution description here.
+## Homework 1 solution
 
-{image} ──▶ ChatPromptTemplate ──▶ ChatDeepSeek (vision) ──▶ JsonOutputParser
-                                                                  │
-                                          ┌───────────────────────┘
-                                          ▼
-                              {subtotal, discounts[], rounding}
-                                          │
-                                          ▼
-                              Python + Decimal 计算
-                              paid     = subtotal + rounding
-                              original = subtotal + sum(discounts)
-                                          │
-                                          ▼
-                              sum across 7 receipts
-                                          │
-                                          ▼
-                              HK$1974.30 / HK$2348.20 → results.csv
+### Chain visualization
+
+```mermaid
+flowchart TD
+    A["images: list of Paths"] --> B["image_data_url(p) for each"]
+    B --> C["inputs: [{image: data_url}, ...]"]
+    C --> D["chain.batch(inputs) — parallel"]
+    D --> E["results: [{subtotal, discounts, rounding}, ...]"]
+    E --> F["Python + Decimal<br/>paid = subtotal + rounding<br/>original = subtotal + sum(discounts)"]
+    F --> G["sum across receipts"]
+    G --> H["Q1, Q2 → results.csv"]
+```
+
+### Description
+
+There are three things my solution does.
+
+**Firstly**, build a chain. The chain takes `{image}` as input — this is the receipt picture, encoded as a data URL. The LLM (`deepseek-v4-flash-vision-exp`) reads the image and outputs one JSON object with three fields: `subtotal` (the 小計 line), `discounts` (a list of every discount amount as a positive number, not including rounding), and `rounding` (the ROUNDING line with its sign). I use `JsonOutputParser` so the output comes back as a Python dict directly.
+
+**Secondly**, write code to read this dict and do the maths. All arithmetic is in Python, not in the model, using `Decimal` for accuracy. For each receipt:
+
+```
+paid     = subtotal + rounding
+original = subtotal + sum(discounts)
+```
+
+Then I add up `paid` across all 7 receipts to get Q1, and add up `original` to get Q2.
+
+**Thirdly**, format the answer. Each response must contain exactly one HKD amount, so I return `f"HK${total:.2f}"` — for example `"HK$1974.30"`.
+
+One thing I learned: at first I asked the model to output the two totals directly. Q1 was correct (the paid amount is printed on the receipt so the model just copies it), but Q2 was off by HK$114.79 — the model dropped discount lines when trying to read and add at the same time. Adding "scan line by line" to the prompt helped a bit (error dropped to HK$28.20) but did not fix it. Moving all the arithmetic to Python and letting the model only output raw fields solved it completely. Both answers are now exact on the public test.
