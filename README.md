@@ -51,3 +51,19 @@ homework runner.
 ## Homework 1 solution: 
 > to students: please fill your solution description here.
 
+{image} ──▶ ChatPromptTemplate ──▶ ChatDeepSeek (vision) ──▶ JsonOutputParser
+                                                                  │
+                                          ┌───────────────────────┘
+                                          ▼
+                              {subtotal, discounts[], rounding}
+                                          │
+                                          ▼
+                              Python + Decimal 计算
+                              paid     = subtotal + rounding
+                              original = subtotal + sum(discounts)
+                                          │
+                                          ▼
+                              sum across 7 receipts
+                                          │
+                                          ▼
+                              HK$1974.30 / HK$2348.20 → results.csv
