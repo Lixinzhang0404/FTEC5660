@@ -63,7 +63,53 @@ def build_chain() -> Any:
     ``deepseek-v4-flash-vision-exp``. The API key is loaded from .env.
     """
     ### YOUR CODE HERE
-    return None
+     from langchain_core.prompts import ChatPromptTemplate
+    from langchain_deepseek import ChatDeepSeek
+    from langchain_core.output_parsers import JsonOutputParser
+    from langchain_core.runnables import RunnableLambda
+    import base64
+
+    llm = ChatDeepSeek(
+        model="deepseek-v4-flash-vision-exp",
+        temperature=0,                             
+        max_tokens=1000,                             
+        extra_body={
+        "thinking": {"type": "disabled"},      
+        },
+    )
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", '''Read the supermarket receipt image and extract 3 numbers.
+        Return ONLY valid JSON with these exact keys:
+        {{"subtotal": <number>, "discounts": [<number>, ...], "rounding": <number>}}
+
+        Definitions:
+      
+        - "subtotal": the number on the 小計 / SUBTOTAL line. This is the amount AFTER all discounts but BEFORE rounding. Do NOT use the original prices, do NOT use the total paid.
+        -"discounts": a JSON list of EVERY discount amount on the receipt, each written as a POSITIVE number. Include every line whose amount is negative and that reduces the price:
+        包装變形 / packaging damage
+        Buy N Save
+        X% OFF
+        member / 會員 discount
+        coupon / 優惠券
+        app discount
+        any other negative-amount line EXCEPT the ROUNDING line.
+        If a line shows "-$12.40", put 12.40 in the list. If there are no discounts, use [].
+        - "rounding": the number on the ROUNDING line, with its sign (usually negative, e.g. -0.02). If there is no ROUNDING line, use 0.
+        
+        Rules:
+        - Scan the receipt line by line. Do NOT skip any discount line.
+        - All values must be plain numbers in HKD: no "HK$", no commas.
+        - Output JSON only. No prose, no explanation, no code fences.'''),
+
+        ("human", [
+            {"type": "text", "text": "Parse this receipt."},
+            {"type": "image_url", "image_url": {"url": "{image}"}},
+        ]),
+    ])
+    
+    return prompt| llm | JsonOutputParser()
+
 
 
 def answer_queries(chain: Any, images: list[Path]) -> dict[str, Any]:
@@ -79,8 +125,29 @@ def answer_queries(chain: Any, images: list[Path]) -> dict[str, Any]:
     to process independent receipt-extraction prompts in parallel.
     """
     ### YOUR CODE HERE
-    _ = (chain, images)
-    return {QUERY_1: DUMMY_RESPONSE, QUERY_2: DUMMY_RESPONSE}
+    inputs = []
+    for p in images:
+        inputs.append({"image": image_data_url(p)})
+    results = chain.batch(inputs)
+
+    from decimal import Decimal
+
+    sum_final=Decimal("0.00")
+    sum_original= Decimal("0.00")
+    for r in results:
+        subtotal  = Decimal(str(r["subtotal"]))
+        rounding  = Decimal(str(r["rounding"]))
+        discount_sum = sum((Decimal(str(d)) for d in r["discounts"]), Decimal("0"))
+
+        paid     = subtotal + rounding           
+        original = subtotal + discount_sum     
+
+        sum_final += paid
+        sum_original += original
+
+    
+    return {QUERY_1: f"HK${sum_final:.2f}", QUERY_2: f"HK${sum_original:.2f}"}
+
 
 
 # Everything below is provided runner/scoring code. No edits are needed.
